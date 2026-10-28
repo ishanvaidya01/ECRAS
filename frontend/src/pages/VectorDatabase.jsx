@@ -834,7 +834,8 @@ const VectorDatabase = ({ initialTab = 'operations' }) => {
       }
       const res = await axios.post(`${API_BASE}/api/vector/test-insert`, payload);
       const data = res.data.data;
-      notify('success', `${data.operation} in ${data.engine}: ${data.id} (${data.dimensions}-d vector, ${data.vector_norm} norm).`);
+      const dest = demoType === 'job_postings' ? 'Job Postings page (/jobs)' : (demoType === 'candidates' ? 'Candidates page (/candidates)' : 'Collections');
+      notify('success', `${data.operation} in ${data.engine}: ${data.id} is live in ChromaDB and synchronized with the ${dest}!`);
       await refreshAll();
     } catch (err) {
       notify('error', err.response?.data?.error || err.message);
@@ -1390,26 +1391,31 @@ const VectorDatabase = ({ initialTab = 'operations' }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">ID (optional)</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">ID (optional numeric or leave blank)</label>
                 <input
                   type="text"
                   value={demoId}
                   onChange={event => setDemoId(event.target.value)}
-                  placeholder="e.g. 100 / demo_alpha"
+                  placeholder="e.g. 6 (or leave empty for real auto-ID)"
                   className="input-field text-sm font-mono"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Text to embed</label>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Text to embed & store</label>
               <textarea
                 required
                 value={demoText}
                 onChange={event => setDemoText(event.target.value)}
                 className="input-field text-sm min-h-[96px]"
-                placeholder="Write text to embed into ChromaDB…"
+                placeholder={demoType === 'job_postings' ? "Enter 'Job Title: Description' or job title..." : "Write text to embed into ChromaDB…"}
               />
+              {demoType === 'job_postings' && (
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Tip: Use &quot;Title: Description&quot; (e.g. Cloud Architect: Enterprise Kubernetes & Terraform). It will be saved as a real job posting visible on the <Link to="/jobs" className="text-indigo-600 underline font-semibold">Job Postings page</Link>.
+                </p>
+              )}
             </div>
 
             {demoType === 'candidate_propositions' || demoType === 'proposition' ? (

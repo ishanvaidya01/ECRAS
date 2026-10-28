@@ -263,49 +263,172 @@ app.post('/api/vector/test-insert', async (req, res) => {
             return res.status(400).json({ success: false, error: 'text is required' });
         }
 
+        const rawText = String(text).trim();
         const hasCustomId = id !== undefined && id !== null && String(id).trim() !== '';
-        const recordId = hasCustomId
-            ? String(id).trim().replace(/^[a-z]+_/, '')
-            : 'demo_' + Date.now().toString(36);
+        const customIdStr = hasCustomId ? String(id).trim().replace(/^[a-z]+_/, '') : '';
 
         let result;
-        if (type === 'criterion' || type === 'job_criteria') {
+
+        if (type === 'job_postings' || type === 'job') {
+            // Real job posting integration: visible on /jobs and ChromaDB
+            const isNumeric = /^\d+$/.test(customIdStr);
+            const targetJobId = isNumeric ? Number(customIdStr) : (db.memoryStore.jobs.length + 1);
+
+            let title, description;
+            if (req.body.title) {
+                title = String(req.body.title).trim();
+                description = rawText;
+            } else if (rawText.includes(':')) {
+                const parts = rawText.split(':');
+                title = parts[0].trim();
+                description = parts.slice(1).join(':').trim() || title;
+            } else {
+                title = rawText.length > 50 ? rawText.substring(0, 45) + '...' : rawText;
+                description = rawText;
+            }
+
+            const existingJob = db.memoryStore.jobs.find(j => j.job_id === targetJobId);
+            if (existingJob) {
+                existingJob.title = title;
+                existingJob.description = description;
+                existingJob.status = 'OPEN';
+            } else {
+                db.memoryStore.jobs.push({
+                    job_id: targetJobId,
+                    title,
+                    description,
+                    status: 'OPEN',
+                    org_id: 1,
+                    created_by: 2
+                });
+            }
+
+            result = await vectorService.indexRecord(
+                'job_postings',
+                targetJobId,
+                `${title}: ${description}`,
+                {
+                    job_id: targetJobId,
+                    title,
+                    description,
+                    status: 'OPEN',
+                    org_id: 1,
+                    created_by: 2,
+                    ...(metadata || {})
+                },
+                { source }
+            );
+        } else if (type === 'criterion' || type === 'job_criteria') {
+            const isNumeric = /^\d+$/.test(customIdStr);
+            const targetCritId = isNumeric ? Number(customIdStr) : (db.memoryStore.criteria.length + 1);
+            const targetJobId = job_id !== undefined && job_id !== null && job_id !== '' ? Number(job_id) : 1;
+            const targetWeight = weight !== undefined && weight !== null && weight !== '' ? Number(weight) : 0.5;
+
+            const existingCrit = db.memoryStore.criteria.find(c => c.criterion_id === targetCritId);
+            if (existingCrit) {
+                existingCrit.criterion_text = rawText;
+                existingCrit.weight = targetWeight;
+                existingCrit.job_id = targetJobId;
+            } else {
+                db.memoryStore.criteria.push({
+                    criterion_id: targetCritId,
+                    job_id: targetJobId,
+                    criterion_text: rawText,
+                    weight: targetWeight
+                });
+            }
+
             result = await vectorService.indexJobCriterion(
-                recordId,
-                job_id !== undefined && job_id !== null && job_id !== '' ? job_id : 1,
-                text,
-                weight !== undefined && weight !== null && weight !== '' ? weight : 0.8,
+                targetCritId,
+                targetJobId,
+                rawText,
+                targetWeight,
                 { source }
             );
         } else if (type === 'proposition' || type === 'candidate_propositions') {
+            const isNumeric = /^\d+$/.test(customIdStr);
+            const targetPropId = isNumeric ? Number(customIdStr) : (db.memoryStore.propositions.length + 1);
+            const targetCandidateId = candidate_id !== undefined && candidate_id !== null && candidate_id !== '' ? Number(candidate_id) : 1;
+            const targetSection = section || 'Projects';
+
+            const existingProp = db.memoryStore.propositions.find(p => p.proposition_id === targetPropId);
+            if (existingProp) {
+                existingProp.prop_text = rawText;
+                existingProp.section = targetSection;
+                existingProp.candidate_id = targetCandidateId;
+            } else {
+                db.memoryStore.propositions.push({
+                    proposition_id: targetPropId,
+                    candidate_id: targetCandidateId,
+                    section: targetSection,
+                    prop_text: rawText
+                });
+            }
+
             result = await vectorService.indexProposition(
-                recordId,
-                candidate_id !== undefined && candidate_id !== null && candidate_id !== '' ? candidate_id : 1,
-                section || 'Demo',
-                text,
+                targetPropId,
+                targetCandidateId,
+                targetSection,
+                rawText,
+                { source }
+            );
+        } else if (type === 'candidates' || type === 'candidate') {
+            const isNumeric = /^\d+$/.test(customIdStr);
+            const targetCandId = isNumeric ? Number(customIdStr) : (db.memoryStore.candidates.length + 1);
+            const name = req.body.name || rawText.split('(')[0].split('-')[0].trim() || `Candidate #${targetCandId}`;
+            const email = req.body.email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@email.com`;
+            const demographic = req.body.demographic_category || 'Race - Majority Group';
+
+            const existingCand = db.memoryStore.candidates.find(c => c.candidate_id === targetCandId);
+            if (existingCand) {
+                existingCand.name = name;
+                existingCand.contact_email = email;
+            } else {
+                db.memoryStore.candidates.push({
+                    candidate_id: targetCandId,
+                    name,
+                    contact_email: email,
+                    phone: '+1-555-0199',
+                    demographic_category: demographic
+                });
+            }
+
+            result = await vectorService.indexRecord(
+                'candidates',
+                targetCandId,
+                `${name} (${demographic}) - ${email}`,
+                {
+                    candidate_id: targetCandId,
+                    name,
+                    contact_email: email,
+                    demographic_category: demographic,
+                    ...(metadata || {})
+                },
                 { source }
             );
         } else if (vectorService.COLLECTION_DEFINITIONS && vectorService.COLLECTION_DEFINITIONS[type]) {
+            const recordId = customIdStr || ('rec_' + Date.now().toString(36));
             result = await vectorService.indexRecord(
                 type,
                 recordId,
-                text,
+                rawText,
                 metadata || {},
                 { source }
             );
         } else {
+            const targetPropId = db.memoryStore.propositions.length + 1;
             result = await vectorService.indexProposition(
-                recordId,
+                targetPropId,
                 candidate_id || 1,
                 section || 'Demo',
-                text,
+                rawText,
                 { source }
             );
         }
 
         res.json({
             success: true,
-            message: `${result.operation} complete in ${result.engine} (${result.dimensions}-dimensional vector).`,
+            message: `${result.operation} complete in ${result.engine} (${result.dimensions}-dimensional vector). Real entity stored & synchronized across Job Postings and Vector DB.`,
             data: result
         });
     } catch (err) {
