@@ -566,7 +566,18 @@ const RecordModal = ({ record, onClose, onChanged, notify }) => {
 const SemanticMap = ({ points, onInspect }) => {
   const [hovered, setHovered] = useState(null);
   const [picked, setPicked] = useState(null);
+  const [activeCollection, setActiveCollection] = useState('ALL');
   const selected = picked || hovered;
+
+  const filteredPoints = useMemo(() => {
+    if (activeCollection === 'ALL') return points;
+    return points.filter(p => p.collection === activeCollection);
+  }, [points, activeCollection]);
+
+  // Compute tooltip position percentages clamped within container
+  const tooltipX = selected ? Math.max(16, Math.min(84, selected.x)) : 50;
+  const tooltipY = selected ? selected.y : 50;
+  const isTopHalf = selected ? selected.y < 45 : false;
 
   return (
     <div className="space-y-4">
@@ -574,88 +585,223 @@ const SemanticMap = ({ points, onInspect }) => {
         <div>
           <h3 className="text-lg font-bold text-slate-800">2D semantic map</h3>
           <p className="text-xs text-slate-500">
-            PCA projection of every 384-dimensional embedding. Nearby points have similar meaning.
+            High-precision PCA projection of 384-dimensional embeddings. Nearby points share semantic similarity.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-600">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> Propositions</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Criteria</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Jobs</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Candidates</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-teal-500" /> Apps</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-purple-500" /> Interviews</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-fuchsia-500" /> Transcripts</span>
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
+          <button
+            type="button"
+            onClick={() => setActiveCollection('ALL')}
+            className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold transition-all ${
+              activeCollection === 'ALL'
+                ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            All ({points.length})
+          </button>
+          {[
+            { id: 'candidate_propositions', label: 'Propositions', color: 'bg-indigo-500' },
+            { id: 'job_criteria', label: 'Criteria', color: 'bg-amber-500' },
+            { id: 'job_postings', label: 'Jobs', color: 'bg-blue-500' },
+            { id: 'candidates', label: 'Candidates', color: 'bg-emerald-500' },
+            { id: 'applications', label: 'Apps', color: 'bg-teal-500' },
+            { id: 'interview_sessions', label: 'Interviews', color: 'bg-purple-500' },
+            { id: 'transcripts', label: 'Transcripts', color: 'bg-fuchsia-500' }
+          ].map(cat => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setActiveCollection(activeCollection === cat.id ? 'ALL' : cat.id)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-all ${
+                activeCollection === cat.id
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${cat.color}`} />
+              {cat.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
-        {points.length === 0 ? (
-          <div className="h-80 flex items-center justify-center text-sm text-slate-500">
-            No vectors available to project yet.
+      <div className="relative rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50 p-4 shadow-sm select-none">
+        {filteredPoints.length === 0 ? (
+          <div className="h-[28rem] flex items-center justify-center text-sm text-slate-500">
+            No vectors available for the selected collection.
           </div>
         ) : (
-          <svg viewBox="0 0 100 100" className="w-full h-[30rem]">
-            <defs>
-              <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#e2e8f0" strokeWidth="0.18" />
-              </pattern>
-            </defs>
-            <rect x="0" y="0" width="100" height="100" fill="url(#grid)" rx="1.5" />
-            <line x1="50" y1="4" x2="50" y2="96" stroke="#cbd5e1" strokeWidth="0.22" strokeDasharray="1.2 1.2" />
-            <line x1="4" y1="50" x2="96" y2="50" stroke="#cbd5e1" strokeWidth="0.22" strokeDasharray="1.2 1.2" />
-            <text x="50" y="98" textAnchor="middle" fill="#94a3b8" fontSize="2.1">PC1</text>
-            <text x="2.5" y="50" textAnchor="middle" fill="#94a3b8" fontSize="2.1" transform="rotate(-90 2.5 50)">PC2</text>
+          <div className="relative w-full h-[28rem] overflow-hidden">
+            <svg
+              viewBox="0 0 1000 1000"
+              preserveAspectRatio="xMidYMid meet"
+              shapeRendering="geometricPrecision"
+              className="w-full h-full"
+            >
+              <defs>
+                <pattern id="grid-pattern" width="100" height="100" patternUnits="userSpaceOnUse">
+                  <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#e2e8f0" strokeWidth="1.2" />
+                </pattern>
+                <filter id="point-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#0f172a" floodOpacity="0.35" />
+                </filter>
+              </defs>
+              <rect x="0" y="0" width="1000" height="1000" fill="url(#grid-pattern)" rx="16" />
+              <line x1="500" y1="30" x2="500" y2="970" stroke="#cbd5e1" strokeWidth="1.8" strokeDasharray="8 8" />
+              <line x1="30" y1="500" x2="970" y2="500" stroke="#cbd5e1" strokeWidth="1.8" strokeDasharray="8 8" />
+              <text x="500" y="990" textAnchor="middle" fill="#94a3b8" fontSize="20" fontWeight="bold">PC1</text>
+              <text x="22" y="500" textAnchor="middle" fill="#94a3b8" fontSize="20" fontWeight="bold" transform="rotate(-90 22 500)">PC2</text>
 
-            {points.map(point => {
-              const pointColor = COLLECTION_COLORS[point.collection] || (point.type === 'criterion' ? '#f59e0b' : '#6366f1');
-              const isActive = selected && selected.id === point.id;
-              return (
-                <g key={`${point.collection}-${point.id}`}>
+              {/* Base layer: all non-hovered/non-picked points */}
+              {filteredPoints.map(point => {
+                const isSelected = selected && selected.id === point.id;
+                if (isSelected) return null; // Rendered in top layer to avoid clipping
+                const pointColor = COLLECTION_COLORS[point.collection] || '#6366f1';
+                return (
                   <circle
-                    cx={point.x}
-                    cy={point.y}
-                    r={isActive ? 2.1 : 1.25}
+                    key={`${point.collection}-${point.id}`}
+                    cx={point.x * 10}
+                    cy={point.y * 10}
+                    r={12}
                     fill={pointColor}
-                    fillOpacity={isActive ? 1 : 0.82}
-                    stroke={isActive ? '#0f172a' : '#ffffff'}
-                    strokeWidth={isActive ? 0.45 : 0.25}
-                    className="cursor-pointer transition-all"
+                    fillOpacity={0.88}
+                    stroke="#ffffff"
+                    strokeWidth={2.2}
+                    className="cursor-pointer hover:opacity-100"
                     onMouseEnter={() => setHovered(point)}
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => setPicked(point)}
-                  >
-                    <title>{`${point.collection} / ${point.id} — ${shortText(point.text, 100)}`}</title>
-                  </circle>
+                  />
+                );
+              })}
+
+              {/* Top layer: active selected/hovered point rendered on top to guarantee razor-sharp visibility */}
+              {selected && (
+                <g filter="url(#point-glow)">
+                  <circle
+                    cx={selected.x * 10}
+                    cy={selected.y * 10}
+                    r={22}
+                    fill={COLLECTION_COLORS[selected.collection] || '#6366f1'}
+                    stroke="#0f172a"
+                    strokeWidth={4.5}
+                    className="cursor-pointer"
+                    onClick={() => setPicked(null)}
+                  />
+                  <circle
+                    cx={selected.x * 10}
+                    cy={selected.y * 10}
+                    r={30}
+                    fill="none"
+                    stroke={COLLECTION_COLORS[selected.collection] || '#6366f1'}
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    opacity={0.85}
+                  />
                 </g>
-              );
-            })}
-          </svg>
+              )}
+            </svg>
+
+            {/* Instant Floating Tooltip directly positioned at the hovered point */}
+            {selected && (
+              <div
+                style={{
+                  left: `${tooltipX}%`,
+                  top: `${tooltipY}%`,
+                  transform: isTopHalf
+                    ? 'translate(-50%, 18px)'
+                    : 'translate(-50%, -100%) translateY(-18px)'
+                }}
+                className={`absolute z-30 w-80 max-w-[90vw] pointer-events-auto rounded-xl border border-slate-200/90 bg-white/95 backdrop-blur-md p-3.5 shadow-xl transition-transform duration-75`}
+              >
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: COLLECTION_COLORS[selected.collection] || '#6366f1' }}
+                    />
+                    <span className="font-mono font-bold text-xs text-slate-800 truncate">
+                      {selected.id}
+                    </span>
+                    <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                      {COLLECTION_META[selected.collection]?.short || selected.collection}
+                    </span>
+                  </div>
+                  {picked?.id === selected.id ? (
+                    <button
+                      type="button"
+                      onClick={() => setPicked(null)}
+                      className="text-[10px] font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 px-1.5 py-0.5 rounded"
+                    >
+                      Unpin
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium">Click to pin</span>
+                  )}
+                </div>
+
+                <p className="mt-2 text-xs text-slate-700 line-clamp-3 leading-relaxed">
+                  {selected.text || 'No text snippet available.'}
+                </p>
+
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
+                  <span>
+                    PC1: {(selected.explained_variance !== undefined ? (selected.explained_variance * 100).toFixed(1) : (selected.x).toFixed(1))}% · 
+                    PC2: {(selected.second_variance !== undefined ? (selected.second_variance * 100).toFixed(1) : (selected.y).toFixed(1))}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInspect(selected);
+                    }}
+                    className="inline-flex items-center gap-1 font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded transition-colors"
+                  >
+                    <Eye className="w-3 h-3" /> Inspect raw
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {selected && (
-        <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/60 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono font-bold text-indigo-900">{selected.id}</span>
-            <span className="inline-flex items-center border rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-white text-indigo-700 border-indigo-200">
-              {COLLECTION_META[selected.collection]?.short || selected.collection}
-            </span>
-            <span className="text-slate-500">
-              PC1 {selected.explained_variance !== undefined ? `${(selected.explained_variance * 100).toFixed(1)}%` : '—'} ·
-              PC2 {selected.second_variance !== undefined ? `${(selected.second_variance * 100).toFixed(1)}%` : '—'} of variance
-            </span>
+      {/* Pinned Record Details Card */}
+      {picked && (
+        <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/70 text-xs shadow-sm flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLLECTION_COLORS[picked.collection] || '#6366f1' }} />
+              <span className="font-mono font-bold text-indigo-950 text-sm">{picked.id}</span>
+              <span className="inline-flex items-center border rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-white text-indigo-700 border-indigo-200">
+                {COLLECTION_META[picked.collection]?.label || picked.collection}
+              </span>
+              <span className="text-slate-500 text-[11px]">
+                PC1 {picked.explained_variance !== undefined ? `${(picked.explained_variance * 100).toFixed(1)}%` : '—'} ·
+                PC2 {picked.second_variance !== undefined ? `${(picked.second_variance * 100).toFixed(1)}%` : '—'} variance
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onInspect(picked)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-lg px-2.5 py-1 hover:bg-indigo-50 shadow-sm"
+              >
+                <Eye className="w-3.5 h-3.5" /> Inspect raw ChromaDB storage
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicked(null)}
+                className="text-[11px] text-slate-500 hover:text-slate-700 px-2 py-1"
+              >
+                Clear
+              </button>
+            </div>
           </div>
-          <p className="mt-2 text-slate-700">{selected.text}</p>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] text-slate-500">Click any point to see its nearest semantic neighborhood; inspect the raw rows to see exactly what Chroma persisted.</p>
-            <button
-              type="button"
-              onClick={() => onInspect(selected)}
-              className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded px-2 py-1 hover:bg-indigo-50"
-            >
-              <Eye className="w-3 h-3" /> Inspect raw storage
-            </button>
-          </div>
+          <p className="text-slate-800 text-xs leading-relaxed bg-white/70 p-2.5 rounded-lg border border-indigo-100">
+            {picked.text}
+          </p>
         </div>
       )}
     </div>

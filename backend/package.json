@@ -4,8 +4,8 @@
   "description": "ECRAS Modern Vector Database Instance (ChromaDB + Transformers)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node init && node server.js",
+    "dev": "node init && node server.js",
     "sync": "node -e \"require('./vectorService').initVectorService().then(() => console.log('Ready'))\""
   },
   "keywords": [
